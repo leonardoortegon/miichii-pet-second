@@ -13,11 +13,13 @@ export type PetStats = Record<StatKey, number>
 
 export type JsonRecord = Record<string, unknown>
 
+export type LifeStage = 'hatchling' | 'child' | 'teen' | 'adult'
+
 export type Pet = {
   id: string
   user_id: string
   name: string
-  life_stage: string
+  life_stage: LifeStage
   hunger: number
   mood: number
   energy: number
@@ -98,5 +100,6 @@ export type SimulationResult = {
   events: Array<Omit<PetEvent, 'id' | 'user_id' | 'pet_id' | 'created_at'>>
   memories: Array<Omit<PetMemory, 'id' | 'user_id' | 'pet_id' | 'created_at' | 'updated_at'>>
   traitChanges: JsonRecord
+  lifeStage: LifeStage
   lastSimulatedAt: string
 }

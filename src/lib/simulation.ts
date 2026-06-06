@@ -1,5 +1,6 @@
 import type {
   EnvironmentObject,
+  LifeStage,
   Pet,
   PetEvent,
   PetStats,
@@ -59,6 +60,73 @@ export const applyStatChanges = (
     baseStats,
   )
 
+export type EvolutionProfile = {
+  lifeStage: LifeStage
+  form: 'sprout' | 'bright' | 'dreamer' | 'shadow' | 'nestling'
+  careScore: number
+  condition: 'thriving' | 'steady' | 'tired' | 'strained'
+}
+
+const lifeStageRank: Record<LifeStage, number> = {
+  hatchling: 0,
+  child: 1,
+  teen: 2,
+  adult: 3,
+}
+
+const rankToLifeStage: LifeStage[] = ['hatchling', 'child', 'teen', 'adult']
+
+export function resolveEvolutionProfile(
+  pet: Pick<Pet, 'created_at' | 'life_stage'>,
+  stats: PetStats,
+  eventCount: number,
+  memoryCount: number,
+): EvolutionProfile {
+  const ageHours = Math.max(0, (Date.now() - new Date(pet.created_at).getTime()) / 3_600_000)
+  const wellness =
+    stats.health * 0.25 +
+    stats.mood * 0.18 +
+    stats.trust * 0.18 +
+    stats.curiosity * 0.12 +
+    stats.energy * 0.08 +
+    stats.cleanliness * 0.08 +
+    (100 - stats.hunger) * 0.05 +
+    (100 - stats.loneliness) * 0.03 +
+    (100 - stats.stress) * 0.03
+  const careScore = Math.round(wellness + eventCount * 3 + memoryCount * 6 + ageHours * 0.35)
+  const nextRank =
+    careScore >= 185 || eventCount >= 35 || ageHours >= 96
+      ? 3
+      : careScore >= 125 || eventCount >= 18 || ageHours >= 48
+        ? 2
+        : careScore >= 75 || eventCount >= 6 || ageHours >= 12
+          ? 1
+          : 0
+  const lifeStage = rankToLifeStage[Math.max(lifeStageRank[pet.life_stage], nextRank)]
+
+  const condition =
+    stats.health < 35 || stats.stress > 75 || stats.hunger > 85
+      ? 'strained'
+      : stats.energy < 28 || stats.loneliness > 70
+        ? 'tired'
+        : stats.mood > 74 && stats.health > 64
+          ? 'thriving'
+          : 'steady'
+
+  const form =
+    condition === 'strained'
+      ? 'shadow'
+      : stats.trust > 72 && stats.loneliness < 36
+        ? 'nestling'
+        : stats.curiosity > 72
+          ? 'dreamer'
+          : stats.mood > 72
+            ? 'bright'
+            : 'sprout'
+
+  return { lifeStage, form, careScore, condition }
+}
+
 export const actionEffects: Record<
   UserActionType,
   {
@@ -117,6 +185,7 @@ export function runOfflineSimulation(input: SimulationInput): SimulationResult {
       events: [],
       memories: [],
       traitChanges: {},
+      lifeStage: input.pet.life_stage,
       lastSimulatedAt: input.now.toISOString(),
     }
   }
@@ -197,6 +266,30 @@ export function runOfflineSimulation(input: SimulationInput): SimulationResult {
     })
   }
 
+  const evolution = resolveEvolutionProfile(
+    input.pet,
+    stats,
+    input.recentEvents.length + events.length,
+    input.memories.length + memories.length,
+  )
+
+  if (evolution.lifeStage !== input.pet.life_stage) {
+    events.push({
+      type: 'evolution',
+      title: `${input.pet.name} grew into ${evolution.lifeStage}`,
+      description: `${input.pet.name}'s pixel shape shifted after many small remembered moments.`,
+      stat_changes: {},
+      source: 'simulation',
+      metadata: {
+        from_stage: input.pet.life_stage,
+        to_stage: evolution.lifeStage,
+        form: evolution.form,
+        care_score: evolution.careScore,
+        condition: evolution.condition,
+      },
+    })
+  }
+
   return {
     stats,
     events,
@@ -204,7 +297,11 @@ export function runOfflineSimulation(input: SimulationInput): SimulationResult {
     traitChanges: {
       patience: elapsedHours > 12 ? 1 : 0,
       nest_focus: hasObject(input.environmentObjects, 'blanket') ? 1 : 0,
+      evolution_form: evolution.form,
+      condition: evolution.condition,
+      care_score: evolution.careScore,
     },
+    lifeStage: evolution.lifeStage,
     lastSimulatedAt: input.now.toISOString(),
   }
 }

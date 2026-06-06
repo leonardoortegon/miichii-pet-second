@@ -207,18 +207,109 @@ button:disabled {
   animation: bob 1.8s steps(2, end) infinite;
 }
 
+.stage-child {
+  width: 126px;
+  height: 108px;
+}
+
+.stage-teen {
+  width: 144px;
+  height: 124px;
+}
+
+.stage-adult {
+  width: 164px;
+  height: 138px;
+}
+
 .pet-sprite::before {
   content: '';
   position: absolute;
+  z-index: 1;
   inset: 14px 13px 12px;
   background: #c8d7a4;
   clip-path: polygon(18% 22%, 34% 9%, 44% 20%, 62% 20%, 72% 9%, 85% 24%, 89% 66%, 72% 86%, 29% 86%, 12% 66%);
 }
 
+.crest,
+.tail {
+  position: absolute;
+  z-index: 2;
+  display: none;
+  background: #17211c;
+}
+
+.tail {
+  z-index: 0;
+}
+
+.stage-child .crest,
+.stage-teen .crest,
+.stage-adult .crest,
+.stage-teen .tail,
+.stage-adult .tail {
+  display: block;
+}
+
+.crest {
+  top: 12px;
+  left: calc(50% - 7px);
+  width: 14px;
+  height: 14px;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.tail {
+  right: -13px;
+  bottom: 24px;
+  width: 26px;
+  height: 22px;
+  clip-path: polygon(0 25%, 100% 0, 82% 100%, 0 72%);
+}
+
+.form-bright::before {
+  background: #dfe7a9;
+}
+
+.form-dreamer .crest {
+  top: 4px;
+  width: 28px;
+  left: calc(50% - 14px);
+  clip-path: polygon(0 70%, 22% 0, 50% 70%, 78% 0, 100% 70%);
+}
+
+.form-dreamer .tail {
+  height: 34px;
+  clip-path: polygon(0 35%, 65% 0, 100% 28%, 52% 100%, 0 72%);
+}
+
+.form-nestling .crest {
+  width: 24px;
+  height: 10px;
+  left: calc(50% - 12px);
+  clip-path: polygon(0 45%, 22% 0, 50% 45%, 78% 0, 100% 45%, 100% 100%, 0 100%);
+}
+
+.form-nestling::before {
+  background: #d8e2b0;
+}
+
+.form-shadow::before {
+  background: #9fb17e;
+}
+
+.condition-tired {
+  animation-duration: 2.8s;
+}
+
+.condition-strained {
+  animation: jitter 0.8s steps(2, end) infinite;
+}
+
 .eye,
 .mouth {
   position: absolute;
-  z-index: 1;
+  z-index: 3;
   background: #17211c;
 }
 
@@ -387,6 +478,16 @@ button:disabled {
   }
   50% {
     transform: translateY(6px);
+  }
+}
+
+@keyframes jitter {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(3px);
   }
 }
 

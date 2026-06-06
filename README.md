@@ -60,6 +60,16 @@ Every user-owned table includes `user_id` and has Row Level Security policies so
 
 The app does not let AI directly write to the database. The simulation engine in `src/lib/simulation.ts` owns stat updates and validation. The placeholder Edge Function at `supabase/functions/generate-ai-event` returns structured mock JSON for future AI events, memories, trait changes, and stat changes. AI output should be validated before anything is saved.
 
+## Growth
+
+Pets now resolve a deterministic evolution profile from age, care events, memories, and current stats. The profile includes:
+
+- life stage: `hatchling`, `child`, `teen`, or `adult`
+- form: `sprout`, `bright`, `dreamer`, `shadow`, or `nestling`
+- condition: `thriving`, `steady`, `tired`, or `strained`
+
+Care actions and offline simulation can update `life_stage`, write evolution metadata into `personality_traits`, and create an `evolution` timeline event when the pet grows.
+
 ## Verification
 
 ```bash

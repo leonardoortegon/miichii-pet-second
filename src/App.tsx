@@ -12,7 +12,15 @@ import {
   Utensils,
 } from 'lucide-react'
 import './App.css'
-import { actionEffects, applyStatChanges, defaultStats, petStatsFromRecord, runOfflineSimulation, statKeys } from './lib/simulation'
+import {
+  actionEffects,
+  applyStatChanges,
+  defaultStats,
+  petStatsFromRecord,
+  resolveEvolutionProfile,
+  runOfflineSimulation,
+  statKeys,
+} from './lib/simulation'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 import type { Environment, EnvironmentObject, Pet, PetEvent, PetMemory, PetStats, UserActionType } from './lib/types'
 import { useGameStore } from './stores/gameStore'
@@ -288,6 +296,13 @@ function GameShell({ session }: { session: Session }) {
   }, [environmentQuery.data, pet, simulationMutation])
 
   const stats = useMemo(() => (pet ? petStatsFromRecord(pet) : defaultStats), [pet])
+  const evolution = useMemo(
+    () =>
+      pet
+        ? resolveEvolutionProfile(pet, stats, eventsQuery.data?.length ?? 0, memoriesQuery.data?.length ?? 0)
+        : null,
+    [eventsQuery.data?.length, memoriesQuery.data?.length, pet, stats],
+  )
 
   return (
     <main className="game-page">
@@ -308,16 +323,21 @@ function GameShell({ session }: { session: Session }) {
               <PetSelector pets={petsQuery.data ?? []} selectedPetId={pet.id} onSelect={setSelectedPetId} />
               <div className="room">
                 <RoomObjectStrip objects={environmentQuery.data?.objects ?? []} />
-                <div className={`pet-sprite ${stats.mood > 66 ? 'happy' : stats.energy < 28 ? 'sleepy' : 'idle'}`} aria-label={`${pet.name} pixel pet`}>
+                <div
+                  className={`pet-sprite stage-${evolution?.lifeStage ?? pet.life_stage} form-${evolution?.form ?? 'sprout'} condition-${evolution?.condition ?? 'steady'} ${stats.mood > 66 ? 'happy' : stats.energy < 28 ? 'sleepy' : 'idle'}`}
+                  aria-label={`${pet.name} pixel pet`}
+                >
                   <span className="eye left-eye" />
                   <span className="eye right-eye" />
                   <span className="mouth" />
+                  <span className="crest" />
+                  <span className="tail" />
                 </div>
                 <div className="pet-shadow" />
               </div>
               <div className="pet-readout">
                 <h1>{pet.name}</h1>
-                <span>{pet.life_stage}</span>
+                <span>{evolution ? `${evolution.lifeStage} / ${evolution.form}` : pet.life_stage}</span>
               </div>
               <StatsGrid stats={stats} />
               <ActionPad busy={actionMutation.isPending} onAction={(action) => actionMutation.mutate(action)} />
@@ -531,10 +551,38 @@ async function createPet(userId: string, name: string) {
 async function performUserAction(userId: string, pet: Pet, action: UserActionType, recentEvents: PetEvent[]) {
   const effect = actionEffects[action]
   const nextStats = applyStatChanges(petStatsFromRecord(pet), effect.changes)
+  const { count: eventCount, error: countError } = await supabase
+    .from('pet_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('pet_id', pet.id)
+    .eq('user_id', userId)
+
+  if (countError) throw countError
+
+  const { count: memoryCount, error: memoryCountError } = await supabase
+    .from('pet_memories')
+    .select('id', { count: 'exact', head: true })
+    .eq('pet_id', pet.id)
+    .eq('user_id', userId)
+
+  if (memoryCountError) throw memoryCountError
+
+  const evolution = resolveEvolutionProfile(pet, nextStats, (eventCount ?? recentEvents.length) + 1, memoryCount ?? 0)
+  const evolved = evolution.lifeStage !== pet.life_stage
 
   const { error: updateError } = await supabase
     .from('pets')
-    .update({ ...nextStats, last_simulated_at: new Date().toISOString() })
+    .update({
+      ...nextStats,
+      life_stage: evolution.lifeStage,
+      personality_traits: {
+        ...pet.personality_traits,
+        evolution_form: evolution.form,
+        condition: evolution.condition,
+        care_score: evolution.careScore,
+      },
+      last_simulated_at: new Date().toISOString(),
+    })
     .eq('id', pet.id)
     .eq('user_id', userId)
 
@@ -562,6 +610,27 @@ async function performUserAction(userId: string, pet: Pet, action: UserActionTyp
 
   if (eventError) throw eventError
 
+  if (evolved) {
+    const { error: evolutionEventError } = await supabase.from('pet_events').insert({
+      user_id: userId,
+      pet_id: pet.id,
+      type: 'evolution',
+      title: `${pet.name} grew into ${evolution.lifeStage}`,
+      description: `${pet.name}'s little pixels rearranged into a new shape after your care.`,
+      stat_changes: {},
+      source: 'simulation',
+      metadata: {
+        from_stage: pet.life_stage,
+        to_stage: evolution.lifeStage,
+        form: evolution.form,
+        care_score: evolution.careScore,
+        condition: evolution.condition,
+      },
+    })
+
+    if (evolutionEventError) throw evolutionEventError
+  }
+
   const recentFeedCount = recentEvents.filter((event) => event.type === 'feed').length
   if (action === 'feed' && recentFeedCount >= 2) {
     await supabase.from('pet_memories').upsert(
@@ -588,7 +657,12 @@ async function applySimulationResult(
   const nextTraits = { ...pet.personality_traits, ...result.traitChanges }
   const { error: updateError } = await supabase
     .from('pets')
-    .update({ ...result.stats, personality_traits: nextTraits, last_simulated_at: result.lastSimulatedAt })
+    .update({
+      ...result.stats,
+      life_stage: result.lifeStage,
+      personality_traits: nextTraits,
+      last_simulated_at: result.lastSimulatedAt,
+    })
     .eq('id', pet.id)
     .eq('user_id', userId)
 
